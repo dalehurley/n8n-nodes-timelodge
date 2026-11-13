@@ -1,262 +1,87 @@
-![Banner image](https://user-images.githubusercontent.com/10284570/173569848-c624317f-42b1-45a6-ab09-f0ea3c247648.png)
+# n8n-nodes-timelodge
 
-# n8n-nodes-starter
+Connect TimeLodge clients, projects, and recorded time to n8n workflows.
 
-This starter repository helps you build custom integrations for [n8n](https://n8n.io). It includes example nodes, credentials, the node linter, and all the tooling you need to get started.
+TimeLodge is time tracking, project profitability, and invoicing software for freelancers and small service businesses. This community node uses its workspace-scoped API.
 
-## Quick Start
+## Operations
 
-> [!TIP]
-> **New to building n8n nodes?** The fastest way to get started is with `npm create @n8n/node`. This command scaffolds a complete node package for you using the [@n8n/node-cli](https://www.npmjs.com/package/@n8n/node-cli).
+- **Client:** Create, Get, Get Many.
+- **Project:** Get Many.
+- **Time Entry:** Get Many.
 
-**To create a new node package from scratch:**
+Client selection supports searching by name. Lists support pagination, a result limit, or returning all records. Each API record becomes one n8n output item, paired with its original input item. Time, dates, currencies, and monetary values retain the API’s original representation.
 
-```bash
-npm create @n8n/node
-```
+This package does not start timers, issue invoices, send invoices, process payments, update records, or configure webhooks.
 
-**Already using this starter? Start developing with:**
+## Installation
 
-```bash
-npm run dev
-```
+The npm package name is `n8n-nodes-timelodge`. Registry publication and n8n verification are pending; the source alone does not make this node available in n8n Cloud.
 
-This starts n8n with your nodes loaded and hot reload enabled.
+For local testing, run `npm ci`, `npm run check`, and `npm run dev` in this repository. The official n8n node CLI loads the node into a local n8n instance. Use a separate test workspace and synthetic records.
 
-## What's Included
+After the npm release, a self-hosted n8n owner can install the package through **Settings → Community Nodes**. n8n Cloud discovery requires approval through the n8n Creator Portal.
 
-This starter repository includes two example nodes to learn from:
+## Credentials
 
-- **[Example Node](nodes/Example/)** - A simple starter node that shows the basic structure with a custom `execute` method
-- **[GitHub Issues Node](nodes/GithubIssues/)** - A complete, production-ready example built using the **declarative style**:
-  - **Low-code approach** - Define operations declaratively without writing request logic
-  - Multiple resources (Issues, Comments)
-  - Multiple operations (Get, Get All, Create)
-  - Two authentication methods (OAuth2 and Personal Access Token)
-  - List search functionality for dynamic dropdowns
-  - Proper error handling and typing
-  - Ideal for HTTP API-based integrations
+You need a TimeLodge account and a workspace with API access. Your TimeLodge subscription and any n8n service subscription are separate from this MIT-licensed connector.
 
-> [!TIP]
-> The declarative/low-code style (used in GitHub Issues) is the recommended approach for building nodes that interact with HTTP APIs. It significantly reduces boilerplate code and handles requests automatically.
+1. In the TimeLodge workspace, open the account menu and select **API & webhooks**.
+2. Create a service token, choose an expiry date, and grant only the scopes needed by the workflow.
+3. Copy the one-time token into an n8n **TimeLodge API** credential.
+4. Test the credential. The test calls the read-only `/api/v1/ping` endpoint.
 
-Browse these examples to understand both approaches, then modify them or create your own.
+Required scopes:
 
-## Finding Inspiration
+| Operation                      | Scope           |
+| ------------------------------ | --------------- |
+| Get clients or select a client | `clients:read`  |
+| Create a client                | `clients:write` |
+| Get projects                   | `projects:read` |
+| Get time entries               | `time:read`     |
 
-Looking for more examples? Check out these resources:
+A token belongs to one workspace. To connect another workspace, create a separate token and credential. Revoke the token in TimeLodge to disconnect; replace it in n8n before its expiry when continued access is required. Removing a credential or revoking a token does not undo clients already created.
 
-- **[npm Community Nodes](https://www.npmjs.com/search?q=keywords:n8n-community-node-package)** - Browse thousands of community-built nodes on npm using the `n8n-community-node-package` tag
-- **[n8n Built-in Nodes](https://github.com/n8n-io/n8n/tree/master/packages/nodes-base/nodes)** - Study the source code of n8n's official nodes for production-ready patterns and best practices
-- **[n8n Credentials](https://github.com/n8n-io/n8n/tree/master/packages/nodes-base/credentials)** - See how authentication is implemented for various services
+## Retry-safe client creation
 
-These are excellent resources to understand how to structure your nodes, handle different API patterns, and implement advanced features.
+**Create Client** requires an idempotency key of 1–255 characters. Map a stable identifier from the source event, such as `crm-contact-created:84`. Use the same key and identical client fields when retrying that event. Use a new key for a different event.
 
-## Prerequisites
+TimeLodge documents a 24-hour idempotency replay window. Do not assume that reusing a key forever prevents duplicates. A changed payload with the same key produces a conflict instead of silently overwriting the client. An omitted currency uses the TimeLodge workspace default.
 
-Before you begin, install the following on your development machine:
+## Example workflows
 
-### Required
+**Scheduled time export:** Schedule Trigger → TimeLodge, Time Entry, Get Many → your spreadsheet or reporting destination. Set a limit for a small preview, or enable Return All for a complete workspace list. Apply any date filtering explicitly in n8n; this version does not provide date-filter controls.
 
-- **[Node.js](https://nodejs.org/)** (v22 or higher) and npm
-  - Linux/Mac/WSL: Install via [nvm](https://github.com/nvm-sh/nvm)
-  - Windows: Follow [Microsoft's NodeJS guide](https://learn.microsoft.com/en-us/windows/dev-environment/javascript/nodejs-on-windows)
-- **[git](https://git-scm.com/downloads)**
+**CRM client handoff:** CRM trigger → TimeLodge, Client, Create. Map the display name and a stable source-event idempotency key. Add a legal name or internal code only when needed.
 
-### Recommended
+These examples describe supported connector steps; they do not claim every third-party combination has been tested.
 
-- Follow n8n's [development environment setup guide](https://docs.n8n.io/integrations/creating-nodes/build/node-development-environment/)
+## Data and failures
 
-> [!NOTE]
-> The `@n8n/node-cli` is included as a dev dependency and will be installed automatically when you run `npm install`. The CLI includes n8n for local development, so you don't need to install n8n globally.
+Requests go only to `https://timelodge.com/api/v1` using the selected credential. The node has no custom-host setting, file-system access, environment-variable access, or additional runtime dependencies. It reads the fields exposed by each selected API operation. Client creation sends only the supported form fields.
 
-## Getting Started with this Starter
+The node stops on an API failure by default. n8n’s Continue On Fail option produces a safe error item paired with the failed input. Recheck token expiry, permissions, workspace access, and provider availability. Configure retries in n8n and keep a stable idempotency key for writes. Large Return All requests may encounter TimeLodge’s documented rate limit of 120 requests per minute; a failed pagination request fails the node rather than presenting a partial list as complete.
 
-Follow these steps to create your own n8n community node package:
+## Development and release
 
-### 1. Create Your Repository
+- `npm run check`: official n8n lint, TypeScript build, connector tests, and formatting.
+- `npm run dev`: local n8n smoke testing.
+- `npm pack`: inspect the distributable package.
 
-[Generate a new repository](https://github.com/n8n-io/n8n-nodes-starter/generate) from this template, then clone it:
+Verification requires publication through GitHub Actions with npm provenance. This repository has a publishing-only workflow; routine validation stays local. Configure an authorised npm publisher before running it. Do not tag or publish an untested version. After publication, submit the exact package and repository through the [n8n Creator Portal](https://creators.n8n.io/nodes).
 
-```bash
-git clone https://github.com/<your-organization>/<your-repo-name>.git
-cd <your-repo-name>
-```
+The test suite exercises the actual node with simulated HTTP responses. It does not prove a production account connection or n8n Cloud installation.
 
-### 2. Install Dependencies
+## Support and references
 
-```bash
-npm install
-```
+- [TimeLodge developer reference](https://timelodge.com/developers)
+- [Canonical public API schema](https://timelodge.com/openapi.json)
+- [TimeLodge product facts](https://timelodge.com/facts)
+- [Report a connector issue](https://github.com/dalehurley/n8n-nodes-timelodge/issues)
+- [n8n community-node verification](https://docs.n8n.io/connect/create-nodes/deploy-your-node/submit-community-nodes.md)
 
-This installs all required dependencies including the `@n8n/node-cli`.
-
-### 3. Explore the Examples
-
-Browse the example nodes in [nodes/](nodes/) and [credentials/](credentials/) to understand the structure:
-
-- Start with [nodes/Example/](nodes/Example/) for a basic node
-- Study [nodes/GithubIssues/](nodes/GithubIssues/) for a real-world implementation
-
-### 4. Build Your Node
-
-Edit the example nodes to fit your use case, or create new node files by copying the structure from [nodes/Example/](nodes/Example/).
-
-> [!TIP]
-> If you want to scaffold a completely new node package, use `npm create @n8n/node` to start fresh with the CLI's interactive generator.
-
-### 5. Configure Your Package
-
-Update `package.json` with your details:
-
-- `name` - Your package name (must start with `n8n-nodes-`)
-- `author` - Your name and email
-- `repository` - Your repository URL
-- `description` - What your node does
-
-Make sure your node is registered in the `n8n.nodes` array.
-
-### 6. Develop and Test Locally
-
-Start n8n with your node loaded:
-
-```bash
-npm run dev
-```
-
-This command runs `n8n-node dev` which:
-
-- Builds your node with watch mode
-- Starts n8n with your node available
-- Automatically rebuilds when you make changes
-- Opens n8n in your browser (usually http://localhost:5678)
-
-You can now test your node in n8n workflows!
-
-> [!NOTE]
-> Learn more about CLI commands in the [@n8n/node-cli documentation](https://www.npmjs.com/package/@n8n/node-cli).
-
-### 7. Lint Your Code
-
-Check for errors:
-
-```bash
-npm run lint
-```
-
-Auto-fix issues when possible:
-
-```bash
-npm run lint:fix
-```
-
-### 8. Build for Production
-
-When ready to publish:
-
-```bash
-npm run build
-```
-
-This compiles your TypeScript code to the `dist/` folder.
-
-### 9. Prepare for Publishing
-
-Before publishing:
-
-1. **Update documentation**: Replace this README with your node's documentation. Use [README_TEMPLATE.md](README_TEMPLATE.md) as a starting point.
-2. **Update the LICENSE**: Add your details to the [LICENSE](LICENSE.md) file.
-3. **Test thoroughly**: Ensure your node works in different scenarios.
-
-### 10. Publish to npm
-
-Publishing is handled automatically by the included GitHub Actions workflow ([.github/workflows/publish.yml](.github/workflows/publish.yml)). It runs on every version tag push and publishes to npm with a provenance attestation — a requirement for n8n community nodes starting May 1, 2026.
-
-#### One-time setup
-
-Configure npm to trust this repository's GitHub Actions workflow so it can publish on your behalf. Log in to [npmjs.com](https://npmjs.com), open your package settings, and under **Publish access → Trusted Publishers** add a publisher with:
-
-- **Repository owner**: your GitHub username or org
-- **Repository name**: your repo name
-- **Workflow name**: `publish.yml`
-
-No token or secret needs to be stored in GitHub — the workflow uses GitHub's OIDC token instead.
-
-> [!NOTE]
-> If you prefer a traditional npm token, create a Granular Access Token on npmjs.com and store it as `NPM_TOKEN` in your repository's Actions secrets. See the comments at the top of `.github/workflows/publish.yml` for details.
-
-#### Releasing a new version
-
-```bash
-npm run release
-```
-
-This lints, builds, prompts for a version bump, updates the changelog, commits, tags, and pushes — which triggers the workflow to publish to npm.
-
-### 11. Submit for Verification (Optional)
-
-Get your node verified for n8n Cloud:
-
-1. Ensure your node meets the [requirements](https://docs.n8n.io/integrations/creating-nodes/deploy/submit-community-nodes/):
-   - Uses MIT license ✅ (included in this starter)
-   - No external package dependencies
-   - Follows n8n's design guidelines
-   - Passes quality and security review
-
-2. Submit through the [n8n Creator Portal](https://creators.n8n.io/nodes)
-
-**Benefits of verification:**
-
-- Available directly in n8n Cloud
-- Discoverable in the n8n nodes panel
-- Verified badge for quality assurance
-- Increased visibility in the n8n community
-
-## Available Scripts
-
-This starter includes several npm scripts to streamline development:
-
-| Script                | Description                                                                 |
-| --------------------- | --------------------------------------------------------------------------- |
-| `npm run dev`         | Start n8n with your node and watch for changes (runs `n8n-node dev`)        |
-| `npm run build`       | Compile TypeScript to JavaScript for production (runs `n8n-node build`)     |
-| `npm run build:watch` | Build in watch mode (auto-rebuild on changes)                               |
-| `npm run lint`        | Check your code for errors and style issues (runs `n8n-node lint`)          |
-| `npm run lint:fix`    | Automatically fix linting issues when possible (runs `n8n-node lint --fix`) |
-| `npm run release`     | Create a new release (runs `n8n-node release`)                              |
-
-> [!TIP]
-> These scripts use the [@n8n/node-cli](https://www.npmjs.com/package/@n8n/node-cli) under the hood. You can also run CLI commands directly, e.g., `npx n8n-node dev`.
-
-## Troubleshooting
-
-### My node doesn't appear in n8n
-
-1. Make sure you ran `npm install` to install dependencies
-2. Check that your node is listed in `package.json` under `n8n.nodes`
-3. Restart the dev server with `npm run dev`
-4. Check the console for any error messages
-
-### Linting errors
-
-Run `npm run lint:fix` to automatically fix most common issues. For remaining errors, check the [n8n node development guidelines](https://docs.n8n.io/integrations/creating-nodes/).
-
-### TypeScript errors
-
-Make sure you're using Node.js v22 or higher and have run `npm install` to get all type definitions.
-
-## Resources
-
-- **[n8n Node Documentation](https://docs.n8n.io/integrations/creating-nodes/)** - Complete guide to building nodes
-- **[n8n Community Forum](https://community.n8n.io/)** - Get help and share your nodes
-- **[@n8n/node-cli Documentation](https://www.npmjs.com/package/@n8n/node-cli)** - CLI tool reference
-- **[n8n Creator Portal](https://creators.n8n.io/nodes)** - Submit your node for verification
-- **[Submit Community Nodes Guide](https://docs.n8n.io/integrations/creating-nodes/deploy/submit-community-nodes/)** - Verification requirements and process
-
-## Contributing
-
-Have suggestions for improving this starter? [Open an issue](https://github.com/n8n-io/n8n-nodes-starter/issues) or submit a pull request!
+For account support, contact support@timelodge.com. Never include API tokens, passwords, or private client records in issue reports.
 
 ## License
 
-[MIT](https://github.com/n8n-io/n8n-nodes-starter/blob/master/LICENSE.md)
+MIT. The TimeLodge service has its own subscription and terms.
